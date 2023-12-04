@@ -1,6 +1,7 @@
 import 'package:english_words/english_words.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(MyApp());
@@ -29,20 +30,22 @@ class MyApp extends StatelessWidget {
 }
 
 class MyAppState extends ChangeNotifier {
+  static const String favoritePairs = "favorite_pairs";
+  static const String historyPairs = "history_pairs";
   var current = WordPair.random();
+  var favorites = <WordPair>[];
   var history = <WordPair>[];
 
   GlobalKey? historyListKey;
 
   void getNext() {
     history.insert(0, current);
+    _persistHistory();
     var animatedList = historyListKey?.currentState as AnimatedListState?;
     animatedList?.insertItem(0);
     current = WordPair.random();
     notifyListeners();
   }
-
-  var favorites = <WordPair>[];
 
   void toggleFavorite([WordPair? pair]) {
     pair = pair ?? current;
@@ -51,15 +54,32 @@ class MyAppState extends ChangeNotifier {
     } else {
       favorites.add(pair);
     }
+    _persistFavorites();
     notifyListeners();
   }
 
   void removeFavorite(WordPair pair) {
     if (favorites.contains(pair)) {
       favorites.remove(pair);
+      _persistFavorites();
       notifyListeners();
     }
   }
+
+  Future<void> _persistFavorites() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String> pairList = favorites.map((fav) => "${fav.first}/${fav.second}").toList();
+    print(pairList);
+    await prefs.setStringList(favoritePairs, pairList);
+  }
+
+  Future<void> _persistHistory() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String> pairList = history.map((fav) => "${fav.first}/${fav.second}").toList();
+    print(pairList);
+    await prefs.setStringList(historyPairs, pairList);
+  }
+
 }
 
 class MyHomePage extends StatefulWidget {
@@ -69,10 +89,62 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   var selectedIndex = 0;
+  List<WordPair>? _persistedFavoritePairs;
+  List<WordPair>? _persistedHistoryPairs;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(Duration.zero, () {
+      getPersistedFavorites();
+      getPersistedHistory();
+    });
+  }
+
+  void getPersistedFavorites() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String>? pairList = prefs.getStringList(MyAppState.favoritePairs);
+    List<WordPair> wordPairList = List.empty(growable: true);
+    if (pairList != null) {
+      for (var pair in pairList) {
+        Set<String> pairSplit = pair.split('/').toSet();
+        WordPair wordPair = WordPair(pairSplit.first, pairSplit.last);
+        wordPairList.add(wordPair);
+      }
+    }
+    print(wordPairList);
+    setState(() {
+      _persistedFavoritePairs = wordPairList;
+    });
+  }
+
+  void getPersistedHistory() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String>? pairList = prefs.getStringList(MyAppState.historyPairs);
+    List<WordPair> wordPairList = List.empty(growable: true);
+    if (pairList != null) {
+      for (var pair in pairList) {
+        Set<String> pairSplit = pair.split('/').toSet();
+        WordPair wordPair = WordPair(pairSplit.first, pairSplit.last);
+        wordPairList.add(wordPair);
+      }
+    }
+    print(wordPairList);
+    setState(() {
+      _persistedHistoryPairs = wordPairList;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     var colorScheme = Theme.of(context).colorScheme;
+    var appState = context.watch<MyAppState>();
+    if (_persistedFavoritePairs != null && appState.favorites.isEmpty) {
+      appState.favorites = _persistedFavoritePairs!;
+    }
+    if (_persistedHistoryPairs != null && appState.history.isEmpty) {
+      appState.history = _persistedHistoryPairs!;
+    }
 
     Widget page;
     switch (selectedIndex) {
